@@ -73,9 +73,11 @@ public class CraftingManager {
     private static BatchPacket packet827;
     private static BatchPacket packet844;
     private static BatchPacket packet859;
+    private static BatchPacket packet898;
 
     private static BatchPacket packet_netease_630;
     private static BatchPacket packet_netease_686;
+    private static BatchPacket packet_netease_766;
 
     private final Map<Integer, Map<UUID, ShapedRecipe>> shapedRecipes313 = new Int2ObjectOpenHashMap<>();
     private final Map<Integer, Map<UUID, ShapedRecipe>> shapedRecipes332 = new Int2ObjectOpenHashMap<>();
@@ -806,6 +808,7 @@ public class CraftingManager {
 
     public void rebuildPacket() {
         //TODO Multiversion 添加新版本支持时修改这里
+        packet898 = null;
         packet859 = null;
         packet844 = null;
         packet827 = null;
@@ -847,10 +850,12 @@ public class CraftingManager {
         packet340 = null;
         packet313 = null;
 
+        packet_netease_630 = null;
         packet_netease_686 = null;
+        packet_netease_766 = null;
 
         this.getCachedPacket(GameVersion.getLastVersion()); // 缓存当前协议版本的数据包
-        this.getCachedPacket(GameVersion.V1_21_2_NETEASE);
+        this.getCachedPacket(GameVersion.V1_21_50_NETEASE);
     }
 
     @Deprecated
@@ -874,7 +879,12 @@ public class CraftingManager {
         int protocol = gameVersion.getProtocol();
 
         if (gameVersion.isNetEase()) {
-            if (protocol >= GameVersion.V1_21_2_NETEASE.getProtocol()) {
+            if (protocol >= GameVersion.V1_21_50_NETEASE.getProtocol()) {
+                if (packet_netease_766 == null) {
+                    packet_netease_766 = this.packetFor(GameVersion.V1_21_50_NETEASE);
+                }
+                return packet_netease_766;
+            } else if (protocol >= GameVersion.V1_21_2_NETEASE.getProtocol()) {
                 if (packet_netease_686 == null) {
                     packet_netease_686 = this.packetFor(GameVersion.V1_21_2_NETEASE);
                 }
@@ -887,7 +897,12 @@ public class CraftingManager {
             }
         }
 
-        if (protocol >= GameVersion.V1_21_120.getProtocol()) {
+        if (protocol >= GameVersion.V1_21_130_28.getProtocol()) {
+            if (packet898 == null) {
+                packet898 = packetFor(GameVersion.V1_21_130);
+            }
+            return packet898;
+        } else if (protocol >= GameVersion.V1_21_120.getProtocol()) {
             if (packet859 == null) {
                 packet859 = packetFor(GameVersion.V1_21_120);
             }

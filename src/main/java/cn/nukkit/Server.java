@@ -41,6 +41,7 @@ import cn.nukkit.level.format.LevelProviderManager;
 import cn.nukkit.level.format.anvil.Anvil;
 import cn.nukkit.level.format.leveldb.LevelDBProvider;
 import cn.nukkit.level.generator.*;
+import cn.nukkit.level.generator.Void;
 import cn.nukkit.level.tickingarea.manager.SimpleTickingAreaManager;
 import cn.nukkit.level.tickingarea.manager.TickingAreaManager;
 import cn.nukkit.level.tickingarea.storage.JSONTickingAreaStorage;
@@ -58,7 +59,9 @@ import cn.nukkit.network.BatchingHelper;
 import cn.nukkit.network.Network;
 import cn.nukkit.network.RakNetInterface;
 import cn.nukkit.network.SourceInterface;
+import cn.nukkit.network.encryption.EncryptionUtils;
 import cn.nukkit.network.protocol.*;
+import cn.nukkit.network.protocol.types.auth.AuthType;
 import cn.nukkit.network.query.QueryHandler;
 import cn.nukkit.network.rcon.RCON;
 import cn.nukkit.permission.BanEntry;
@@ -101,6 +104,7 @@ import org.iq80.leveldb.DB;
 import org.iq80.leveldb.Options;
 import org.iq80.leveldb.impl.Iq80DBFactory;
 import org.jetbrains.annotations.NotNull;
+import org.jose4j.jwt.consumer.InvalidJwtException;
 
 import java.awt.*;
 import java.io.*;
@@ -109,8 +113,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
@@ -195,7 +199,8 @@ public class Server {
     private final String dataPath;
     private final String pluginPath;
 
-    private String ip;
+    @NotNull
+    private String ip = "0.0.0.0";
     private int port;
     private QueryHandler queryHandler;
     private QueryRegenerateEvent queryRegenerateEvent;
@@ -680,7 +685,7 @@ public class Server {
 
         if (this.getPropertyBoolean("enable-rcon", false)) {
             try {
-                this.rcon = new RCON(this, this.getPropertyString("rcon.password", ""), (!this.getIp().isEmpty()) ? this.getIp() : "0.0.0.0", this.getPropertyInt("rcon.port", this.getPort()));
+                this.rcon = new RCON(this, this.getPropertyString("rcon.password", ""), this.getIp().isBlank() ? "0.0.0.0" : this.getIp(), this.getPropertyInt("rcon.port", this.getPort()));
             } catch (IllegalArgumentException e) {
                 log.error(baseLang.translateString(e.getMessage(), e.getCause().getMessage()));
             }
@@ -777,7 +782,7 @@ public class Server {
 
         this.queryRegenerateEvent = new QueryRegenerateEvent(this, 5);
 
-        log.info(this.baseLang.translateString("nukkit.server.networkStart", new String[]{this.getIp().isEmpty() ? "*" : this.getIp(), String.valueOf(this.getPort())}));
+        log.info(this.baseLang.translateString("nukkit.server.networkStart", new String[]{this.getIp().isBlank() ? "0.0.0.0" : this.getIp(), String.valueOf(this.getPort())}));
         this.network = new Network(this);
         this.network.setName(this.getMotd());
         this.network.setSubName(this.getSubMotd());
@@ -813,7 +818,7 @@ public class Server {
         Generator.addGenerator(OldNormal.class, "oldnormal", Generator.TYPE_INFINITE);
         Generator.addGenerator(Nether.class, "nether", Generator.TYPE_NETHER);
         Generator.addGenerator(End.class, "the_end", Generator.TYPE_THE_END);
-        Generator.addGenerator(cn.nukkit.level.generator.Void.class, "void", Generator.TYPE_VOID);
+        Generator.addGenerator(Void.class, "void", Generator.TYPE_VOID);
 
         if (this.defaultLevel == null) {
             String defaultName = this.getPropertyString("level-name", "world");
@@ -903,6 +908,17 @@ public class Server {
 
         if (this.getPropertyBoolean("bstats-metrics", true)) {
             new NukkitMetrics(this);
+        }
+
+        // 触发一次，加载JwtConsumerHolder
+        if (this.xboxAuth) {
+            try {
+                EncryptionUtils.validateToken(AuthType.FULL, "");
+            } catch (InvalidJwtException ignored) {
+
+            } catch (Exception e) {
+                this.getLogger().error("EncryptionUtils initialization error, xbox verification will not work!", e);
+            }
         }
 
         // Check for updates
@@ -1632,6 +1648,7 @@ public class Server {
         return viewDistance;
     }
 
+    @NotNull
     public String getIp() {
         return ip;
     }
@@ -3259,7 +3276,7 @@ public class Server {
             }
         }
 
-        this.levelDbCache = this.getPropertyInt("leveldb-cache-mb", 80);
+        this.levelDbCache = this.getPropertyInt("leveldb-cache-mb", 64);
         this.useNativeLevelDB = this.getPropertyBoolean("use-native-leveldb", false);
         this.enableRawOres = this.getPropertyBoolean("enable-raw-ores", true);
         this.enableNewPaintings = this.getPropertyBoolean("enable-new-paintings", true);
@@ -3419,7 +3436,7 @@ public class Server {
             put("enable-spark", false);
             put("hastebin-token", "");
 
-            put("leveldb-cache-mb", 80);
+            put("leveldb-cache-mb", 64);
             put("use-native-leveldb", false);
             put("enable-raw-ores", true);
             put("enable-new-paintings", true);

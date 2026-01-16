@@ -167,10 +167,12 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         }
     }
 
+    @NotNull
     public static Block get(int id) {
         return get(id, null);
     }
 
+    @NotNull
     public static Block get(int id, Integer meta) {
         if (id < 0) {
             id = 255 - id;
@@ -212,10 +214,12 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         }
     }
 
+    @NotNull
     public static Block get(int id, Integer meta, Position pos) {
         return get(id, meta, pos, 0);
     }
 
+    @NotNull
     public static Block get(int id, Integer meta, Position pos, int layer) {
         if (id < 0) {
             id = 255 - id;
@@ -258,13 +262,14 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         return block;
     }
 
+    @NotNull
     public static Block get(int id, int data) {
         if (id < 0) {
             id = 255 - id;
         }
 
         if (id >= CustomBlockManager.LOWEST_CUSTOM_BLOCK_ID) {
-            return CustomBlockManager.get().getBlock(id, 0);
+            return CustomBlockManager.get().getBlock(id, data);
         }
 
         int fullId = id << DATA_BITS;
@@ -288,19 +293,21 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         }
     }
 
+    @NotNull
     public static Block get(int fullId, Level level, int x, int y, int z) {
         return get(fullId, level, x, y, z, 0);
     }
 
+    @NotNull
     public static Block get(int fullId, Level level, int x, int y, int z, int layer) {
-        int id = fullId << DATA_BITS;
+        int id = fullId >> DATA_BITS;
 
         Block block;
         if (id >= CustomBlockManager.LOWEST_CUSTOM_BLOCK_ID) {
-            block = CustomBlockManager.get().getBlock(id, 0);
+            block = CustomBlockManager.get().getBlock(id, fullId & DATA_MASK);
         } else {
             if (fullId >= fullList.length || fullList[fullId] == null) {
-                int meta = fullId & DATA_BITS;
+                int meta = fullId & DATA_MASK;
                 log.debug("Found an unknown BlockId:Meta combination: {}:{}", id, meta);
                 BlockUnknown blockUnknown = new BlockUnknown(id, meta);
                 fullList[fullId] = blockUnknown;
@@ -316,14 +323,16 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         return block;
     }
 
+    @NotNull
     public static Block get(int id, int meta, Level level, int x, int y, int z) {
         return get(id, meta, level, x, y, z, 0);
     }
 
+    @NotNull
     public static Block get(int id, int meta, Level level, int x, int y, int z, int layer) {
         Block block;
         if (id >= CustomBlockManager.LOWEST_CUSTOM_BLOCK_ID) {
-            block = CustomBlockManager.get().getBlock(id, 0);
+            block = CustomBlockManager.get().getBlock(id, meta);
         } else {
             if (meta <= DATA_SIZE) {
                 int index = id << DATA_BITS | meta;
@@ -1425,14 +1434,17 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
         if (canConnectToFullSolid(down)) {
             return true;
         }
+
         switch (down.getId()) {
             case SCAFFOLDING:
             case HOPPER_BLOCK:
                 return true;
         }
-        if (down instanceof BlockSlab) {
-            return ((BlockSlab) down).hasTopBit();
+
+        if (down instanceof BlockSlab slab) {
+            return slab.hasTopBit();
         }
+
         return down instanceof BlockTrapdoor && ((BlockTrapdoor) down).isTop() && !((BlockTrapdoor) down).isOpen();
     }
 
@@ -1452,10 +1464,73 @@ public abstract class Block extends Position implements Metadatable, Cloneable, 
     }
 
     /**
-     * Returns true for WATER and STILL_WATER, false for others
+     * Returns true for WATER or STILL_WATER, false for others
      */
     public static boolean isWater(int id) {
-        return id == WATER || id == STILL_WATER;
+        return BlockTypes.isWater(id);
+    }
+
+    /**
+     * Returns true for LAVA or STILL_LAVA, false for others
+     */
+    public static boolean isLava(int id) {
+        return BlockTypes.isLava(id);
+    }
+
+    /**
+     * Returns true for SLAB, false for others
+     */
+    public static boolean isSlab(int id) {
+        return BlockTypes.isSlab(id);
+    }
+
+    /**
+     * Returns true for STAIRS, false for others
+     */
+    public static boolean isStairs(int id) {
+        return BlockTypes.isStairs(id);
+    }
+
+    /**
+     * Returns true for PRESSURE_PLATE, false for others
+     */
+    public static boolean isPressurePlate(int id) {
+        return BlockTypes.isPressurePlate(id);
+    }
+
+    /**
+     * Returns true for BUTTON, false for others
+     */
+    public static boolean isButton(int id) {
+        return BlockTypes.isButton(id);
+    }
+
+    /**
+     * Returns true for FENCE, false for others
+     */
+    public static boolean isFence(int id) {
+        return BlockTypes.isFence(id);
+    }
+
+    /**
+     * Returns true for FENCE_GATE, false for others
+     */
+    public static boolean isFenceGate(int id) {
+        return BlockTypes.isFenceGate(id);
+    }
+
+    /**
+     * Returns true for TRAPDOOR, false for others
+     */
+    public static boolean isTrapdoor(int id) {
+        return BlockTypes.isTrapdoor(id);
+    }
+
+    /**
+     * Returns true for DOOR, false for others
+     */
+    public static boolean isDoor(int id) {
+        return BlockTypes.isDoor(id);
     }
 
     public boolean isSuspiciousBlock() {

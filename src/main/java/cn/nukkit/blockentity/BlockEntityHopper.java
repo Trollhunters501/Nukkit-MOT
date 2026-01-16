@@ -2,6 +2,7 @@ package cn.nukkit.blockentity;
 
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
+import cn.nukkit.block.BlockComposter;
 import cn.nukkit.block.BlockHopper;
 import cn.nukkit.event.inventory.InventoryMoveItemEvent;
 import cn.nukkit.inventory.*;
@@ -66,7 +67,7 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
 
     @Override
     public boolean isBlockEntityValid() {
-        return this.level.getBlockIdAt(chunk, this.getFloorX(), this.getFloorY(), this.getFloorZ()) == Block.HOPPER_BLOCK;
+        return this.level.getBlockIdAt(this.chunk, this.getFloorX(), this.getFloorY(), this.getFloorZ()) == Block.HOPPER_BLOCK;
     }
 
     @Override
@@ -113,7 +114,7 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
 
     @Override
     public HopperInventory getInventory() {
-        return (HopperInventory) inventory;
+        return (HopperInventory) this.inventory;
     }
 
     @Override
@@ -125,27 +126,32 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
         this.transferCooldown--;
 
         if (!this.isOnTransferCooldown()) {
-            if (this.level.isBlockPowered(getBlock())) {
+            if (this.level.isBlockPowered(this.getBlock())) {
                 return true;
             }
 
-            boolean changed = pushItems() || pushItemsIntoMinecart();
+            boolean changed = false;
 
-            if (!changed) {
+            if (!this.inventory.isFull()) {
                 BlockEntity blockEntity = this.level.getBlockEntity(this.up());
-                if (!(blockEntity instanceof BlockEntityContainer)) {
-                    changed = pickupItems() || pullItemsFromMinecart();
+                Block block = null;
+                if (blockEntity instanceof BlockEntityContainer ||
+                        (block = this.level.getBlock(this.chunk, this.getFloorX(), this.getFloorY() + 1, this.getFloorZ(), false)) instanceof BlockComposter) {
+                    changed = this.pullItems(blockEntity, block);
                 } else {
-                    changed = pullItems();
+                    changed = this.pullItemsFromMinecart() || this.pickupItems();
                 }
+            }
+
+            if (!changed && !this.inventory.isEmpty()) {
+                changed = this.pushItemsIntoMinecart() || this.pushItems();
             }
 
             if (changed) {
                 this.setTransferCooldown(8);
-                setDirty();
+                this.setDirty();
             }
         }
-
 
         return true;
     }
@@ -179,7 +185,6 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     item.count--;
                     inv.setItem(i, item);
 
-                    //归位为null
                     setMinecartInvPickupFrom(null);
                     return true;
                 }
@@ -190,12 +195,12 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
     }
 
     public boolean pickupItems() {
-        return pickupItems(this.pickupArea);
+        return this.pickupItems(this.pickupArea);
     }
 
     public boolean pushItemsIntoMinecart() {
-        if (getMinecartInvPushTo() != null) {
-            Inventory holderInventory = getMinecartInvPushTo().getInventory();
+        if (this.getMinecartInvPushTo() != null) {
+            Inventory holderInventory = this.getMinecartInvPushTo().getInventory();
 
             if (holderInventory.isFull()) {
                 return false;
@@ -228,12 +233,10 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     item.count--;
                     this.inventory.setItem(i, item);
 
-                    //归位为null
                     setMinecartInvPushTo(null);
                     return true;
                 }
             }
-
         }
 
         return false;
@@ -241,19 +244,44 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
 
     @Override
     public boolean pushItems() {
-        if (this.inventory.isEmpty()) {
+        HopperInventory inv = this.getInventory();
+        if (inv.isEmpty()) {
             return false;
         }
 
-        int blockData = this.level.getBlockDataAt(this.getFloorX(), this.getFloorY(), this.getFloorZ()) & 0x7;
+        int x = this.getFloorX();
+        int y = this.getFloorY();
+        int z = this.getFloorZ();
+        int blockData = this.level.getBlockDataAt(x, y, z) & 0x7;
+        Position side = this.getSide(BlockFace.fromIndex(blockData));
+        Block block = this.level.getBlock(side);
+        BlockEntity be = this.level.getBlockEntity(side);
 
-        BlockEntity be = this.level.getBlockEntity(this.getSide(BlockFace.fromIndex(blockData)));
-
-        if (be instanceof BlockEntityHopper && blockData == 0 || !(be instanceof InventoryHolder)) {
+        if ((be instanceof BlockEntityHopper && blockData == 0) || (!(be instanceof InventoryHolder) && !(block instanceof BlockComposter))) {
             return false;
         }
 
-        InventoryMoveItemEvent event;
+        if (block instanceof BlockComposter composter) {
+            if (composter.isFull()) {
+                return false;
+            }
+            for (int i = 0; i < inv.getSize(); i++) {
+                Item item = inv.getItem(i);
+                if (!item.isNull()) {
+                    Item itemToAdd = item.clone();
+                    itemToAdd.setCount(1);
+
+                    int chance = BlockComposter.getChance(itemToAdd);
+                    if (chance > 0 && composter.addItem(itemToAdd, null, chance)) {
+                        item.count--;
+                        inv.setItem(i, item);
+                        this.setDirty();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
 
         if (be instanceof BlockEntityFurnace furnace) {
             FurnaceInventory targetInv = furnace.getInventory();
@@ -263,8 +291,8 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
 
             boolean pushedItem = false;
 
-            for (int i = 0; i < this.inventory.getSize(); i++) {
-                Item item = this.inventory.getItem(i);
+            for (int i = 0; i < inv.getSize(); i++) {
+                Item item = inv.getItem(i);
                 if (!item.isNull()) {
                     Item itemToAdd = item.clone();
                     itemToAdd.setCount(1);
@@ -272,18 +300,16 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     if (blockData == 0) {
                         Item smelting = targetInv.getSmelting();
                         if (smelting.isNull()) {
-                            event = new InventoryMoveItemEvent(this.inventory, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
+                            InventoryMoveItemEvent event = new InventoryMoveItemEvent(inv, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
                             this.server.getPluginManager().callEvent(event);
-
                             if (!event.isCancelled()) {
                                 targetInv.setSmelting(itemToAdd);
                                 item.count--;
                                 pushedItem = true;
                             }
-                        } else if (targetInv.getSmelting().getId() == itemToAdd.getId() && targetInv.getSmelting().getDamage() == itemToAdd.getDamage() && smelting.count < smelting.getMaxStackSize()) {
-                            event = new InventoryMoveItemEvent(this.inventory, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
+                        } else if (smelting.getId() == itemToAdd.getId() && smelting.getDamage() == itemToAdd.getDamage() && smelting.count < smelting.getMaxStackSize()) {
+                            InventoryMoveItemEvent event = new InventoryMoveItemEvent(inv, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
                             this.server.getPluginManager().callEvent(event);
-
                             if (!event.isCancelled()) {
                                 smelting.count++;
                                 targetInv.setSmelting(smelting);
@@ -294,18 +320,16 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     } else if (Fuel.duration.containsKey(itemToAdd.getId())) {
                         Item fuel = targetInv.getFuel();
                         if (fuel.isNull()) {
-                            event = new InventoryMoveItemEvent(this.inventory, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
+                            InventoryMoveItemEvent event = new InventoryMoveItemEvent(inv, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
                             this.server.getPluginManager().callEvent(event);
-
                             if (!event.isCancelled()) {
                                 targetInv.setFuel(itemToAdd);
                                 item.count--;
                                 pushedItem = true;
                             }
                         } else if (fuel.getId() == itemToAdd.getId() && fuel.getDamage() == itemToAdd.getDamage() && fuel.count < fuel.getMaxStackSize()) {
-                            event = new InventoryMoveItemEvent(this.inventory, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
+                            InventoryMoveItemEvent event = new InventoryMoveItemEvent(inv, targetInv, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
                             this.server.getPluginManager().callEvent(event);
-
                             if (!event.isCancelled()) {
                                 fuel.count++;
                                 targetInv.setFuel(fuel);
@@ -316,7 +340,7 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     }
 
                     if (pushedItem) {
-                        this.inventory.setItem(i, item);
+                        inv.setItem(i, item);
                     }
                 }
             }
@@ -329,8 +353,8 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                 return false;
             }
 
-            for (int i = 0; i < this.inventory.getSize(); i++) {
-                Item item = this.inventory.getItem(i);
+            for (int i = 0; i < inv.getSize(); i++) {
+                Item item = inv.getItem(i);
 
                 if (!item.isNull()) {
                     Item itemToAdd = item.clone();
@@ -340,7 +364,7 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                         continue;
                     }
 
-                    InventoryMoveItemEvent ev = new InventoryMoveItemEvent(this.inventory, target, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
+                    InventoryMoveItemEvent ev = new InventoryMoveItemEvent(inv, target, this, itemToAdd, InventoryMoveItemEvent.Action.SLOT_CHANGE);
                     this.server.getPluginManager().callEvent(ev);
 
                     if (ev.isCancelled()) {
@@ -354,7 +378,7 @@ public class BlockEntityHopper extends BlockEntitySpawnableContainer implements 
                     }
 
                     item.count--;
-                    this.inventory.setItem(i, item);
+                    inv.setItem(i, item);
                     return true;
                 }
             }
