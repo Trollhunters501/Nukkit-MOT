@@ -639,6 +639,15 @@ public class Blocks {
         list[MANGROVE_WOOD] = BlockWoodMangrove.class; //752
         list[STRIPPED_MANGROVE_WOOD] = BlockWoodStrippedMangrove.class; //753
         list[MANGROVE_DOUBLE_SLAB] = BlockDoubleSlabMangrove.class; //754
+        list[OAK_HANGING_SIGN] = BlockHangingSignOak.class; //755
+        list[SPRUCE_HANGING_SIGN] = BlockHangingSignSpruce.class; //756
+        list[BIRCH_HANGING_SIGN] = BlockHangingSignBirch.class; //757
+        list[JUNGLE_HANGING_SIGN] = BlockHangingSignJungle.class; //758
+        list[ACACIA_HANGING_SIGN] = BlockHangingSignAcacia.class; //759
+        list[DARK_OAK_HANGING_SIGN] = BlockHangingSignDarkOak.class; //760
+        list[CRIMSON_HANGING_SIGN] = BlockHangingSignCrimson.class; //761
+        list[WARPED_HANGING_SIGN] = BlockHangingSignWarped.class; //762
+        list[MANGROVE_HANGING_SIGN] = BlockHangingSignMangrove.class; //763
         list[BAMBOO_MOSAIC] = BlockBambooMosaic.class; //764
         list[BAMBOO_PLANKS] = BlockPlanksBamboo.class; //765
         list[BAMBOO_BUTTON] = BlockButtonBamboo.class; //766
@@ -652,7 +661,7 @@ public class Blocks {
         list[BAMBOO_WALL_SIGN] = BlockBambooWallSign.class; //774
         list[BAMBOO_TRAPDOOR] = BlockTrapdoorBamboo.class; //775
         list[BAMBOO_DOUBLE_SLAB] = BlockDoubleSlabBamboo.class; //776
-
+        list[BAMBOO_HANGING_SIGN] = BlockHangingSignBamboo.class; //777
         list[BAMBOO_MOSAIC_STAIRS] = BlockStairsBambooMosaic.class; //778
         list[BAMBOO_MOSAIC_SLAB] = BlockSlabBambooMosaic.class; //779
         list[BAMBOO_MOSAIC_DOUBLE_SLAB] = BlockDoubleSlabBambooMosaic.class; //780
@@ -664,7 +673,7 @@ public class Blocks {
         list[CHERRY_DOOR_BLOCK] = BlockDoorCherry.class; //786
         list[CHERRY_FENCE] = BlockFenceCherry.class; //787
         list[CHERRY_FENCE_GATE] = BlockFenceGateCherry.class; //788
-
+        list[CHERRY_HANGING_SIGN] = BlockHangingSignCherry.class; //789
         list[STRIPPED_CHERRY_LOG] = BlockLogStrippedCherry.class; //790
         list[CHERRY_LOG] = BlockCherryLog.class; //791
         list[CHERRY_PLANKS] = BlockPlanksCherry.class; //792
@@ -688,6 +697,23 @@ public class Blocks {
         list[CALIBRATED_SCULK_SENSOR] = BlockCalibratedSculkSensor.class; //835
 
         list[SNIFFER_EGG] = BlockSnifferEgg.class; //851
+
+        list[TUFF_SLAB] = BlockSlabTuff.class; //999
+        list[TUFF_DOUBLE_SLAB] = BlockDoubleSlabTuff.class; //1000
+        list[TUFF_STAIRS] = BlockStairsTuff.class; //1001
+        list[TUFF_WALL] = BlockWallTuff.class; //1002
+        list[POLISHED_TUFF] = BlockTuffPolished.class; //1003
+        list[POLISHED_TUFF_SLAB] = BlockSlabTuffPolished.class; //1004
+        list[POLISHED_TUFF_DOUBLE_SLAB] = BlockDoubleSlabTuffPolished.class; //1005
+        list[POLISHED_TUFF_STAIRS] = BlockStairsTuffPolished.class; //1006
+        list[POLISHED_TUFF_WALL] = BlockWallTuffPolished.class; //1007
+        list[CHISELED_TUFF] = BlockTuffChiseled.class; //1008
+        list[TUFF_BRICKS] = BlockTuffBricks.class; //1009
+        list[TUFF_BRICK_SLAB] = BlockSlabTuffBrick.class; //1010
+        list[TUFF_BRICK_DOUBLE_SLAB] = BlockDoubleSlabTuffBrick.class; //1011
+        list[TUFF_BRICK_STAIRS] = BlockStairsTuffBrick.class; //1012
+        list[TUFF_BRICK_WALL] = BlockWallTuffBrick.class; //1013
+        list[CHISELED_TUFF_BRICKS] = BlockTuffBricksChiseled.class; //1014
 
         list[CHISELED_COPPER] = BlockCopperChiseled.class; //1015
         list[EXPOSED_CHISELED_COPPER] = BlockCopperChiseledExposed.class; //1016
@@ -741,6 +767,7 @@ public class Blocks {
         list[PALE_OAK_DOOR] = BlockDoorPaleOak.class; //1245
         list[PALE_OAK_FENCE] = BlockFencePaleOak.class; //1246
         list[PALE_OAK_FENCE_GATE] = BlockFenceGatePaleOak.class; //1247
+        list[PALE_OAK_HANGING_SIGN] = BlockHangingSignPaleOak.class; //1248
         list[STRIPPED_PALE_OAK_LOG] = BlockLogStrippedPaleOak.class; //1249
         list[PALE_OAK_LOG] = BlockLogPaleOak.class; //1250
         list[PALE_OAK_PLANKS] = BlockPlanksPaleOak.class; //1251
