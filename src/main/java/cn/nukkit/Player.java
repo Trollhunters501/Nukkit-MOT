@@ -17,6 +17,7 @@ import cn.nukkit.entity.data.property.EntityProperty;
 import cn.nukkit.entity.item.*;
 import cn.nukkit.entity.mob.EntityWalkingMob;
 import cn.nukkit.entity.mob.EntityWolf;
+import cn.nukkit.entity.passive.EntityHappyGhast;
 import cn.nukkit.entity.passive.EntityVillager;
 import cn.nukkit.entity.projectile.EntityArrow;
 import cn.nukkit.entity.projectile.EntityProjectile;
@@ -218,9 +219,9 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
     protected long randomClientId;
 
-    protected Vector3 forceMovement = null;
+    protected Location forceMovement = null;
 
-    protected Vector3 teleportPosition = null;
+    protected Location teleportPosition = null;
 
     protected int lastTeleportTick = -1;
 
@@ -358,6 +359,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     private int lastChorusFruitTeleport = 20;
     public long lastSkinChange = -1;
     private double lastRightClickTime = 0.0;
+    private long lastClickAirTime = 0;
     private BlockVector3 lastRightClickPos = null;
     public EntityFishingHook fishing = null;
     public boolean formOpen;
@@ -447,14 +449,20 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
         return startAction;
     }
 
+    /**
+     * @deprecated use {@link #setUsingItem(boolean)} instead
+     */
+    @Deprecated(forRemoval = true)
     public void startAction() {
-        this.setDataFlag(DATA_FLAGS, DATA_FLAG_ACTION, true);
-        this.startAction = this.server.getTick();
+        this.setUsingItem(true);
     }
 
+    /**
+     * @deprecated use {@link #setUsingItem(boolean)} instead
+     */
+    @Deprecated(forRemoval = true)
     public void stopAction() {
-        this.setDataFlag(Player.DATA_FLAGS, Player.DATA_FLAG_ACTION, false);
-        this.startAction = -1;
+        this.setUsingItem(false);
     }
 
     public int getLastEnderPearlThrowingTick() {
@@ -2270,8 +2278,9 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
             this.lastPitch = from.pitch;
 
             this.needSendRotation = false;
-            this.sendPosition(from.add(0, 0.00001, 0), from.yaw, from.pitch, MovePlayerPacket.MODE_NORMAL);
-            this.forceMovement = new Vector3(from.x, from.y + 0.00001, from.z);
+            Location correction = from.add(0, 0.00001, 0);
+            this.sendPosition(correction, MovePlayerPacket.MODE_NORMAL);
+            this.forceMovement = correction;
 
             if (this.speed == null) {
                 this.speed = new Vector3(0, 0, 0);
@@ -2290,16 +2299,13 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
             if (this.riding == null && this.inventory != null) {
                 if (this.isFoodEnabled() && this.getServer().getDifficulty() > 0 && distanceSquared >= 0.05) {
                     double jump = 0;
-                    double swimming = this.isInsideOfWater() ? 0.015 * distanceSquared : 0;
-                    double distance2 = distanceSquared;
-                    if (swimming != 0) {
-                        distance2 = 0;
-                    }
+                    double distance = Math.sqrt(distanceSquared);
+                    double swimming = this.isInsideOfWater() ? 0.01 * distance : 0;
                     if (this.isSprinting()) {
                         if (this.inAirTicks == 3 && swimming == 0) {
                             jump = 0.2;
                         }
-                        this.getFoodData().updateFoodExpLevel(0.1 * distance2 + jump + swimming);
+                        this.getFoodData().updateFoodExpLevel(0.1 * (swimming != 0 ? 0 : distance) + jump + swimming);
                     } else if (this.isSneaking() && this.inAirTicks == 3) {
                         jump = 0.05;
                         this.getFoodData().updateFoodExpLevel(jump);
@@ -2384,7 +2390,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     }
 
     public void addMovement(double x, double y, double z, double yaw, double pitch, double headYaw, Collection<Player> viewers) {
-        this.sendPosition(x, y, z, yaw, pitch, MovePlayerPacket.MODE_NORMAL, viewers);
+        this.sendPosition(x, y, z, yaw, pitch, headYaw, MovePlayerPacket.MODE_NORMAL, viewers);
     }
 
     @Override
@@ -2558,14 +2564,16 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 } else {
                     this.lastInAirTick = server.getTick();
 
-                    if (this.checkMovement && !this.isGliding() && !server.getAllowFlight() && this.inAirTicks > 20 && !this.getAllowFlight() && !this.isSleeping() && !this.isImmobile() && !this.isSwimming() && this.riding == null && !this.hasEffect(Effect.LEVITATION) && !this.hasEffect(Effect.SLOW_FALLING)) {
+                    if (this.checkMovement && !this.isGliding() && !server.getAllowFlight() && this.inAirTicks > 20 && !this.getAllowFlight() && !this.isSleeping() && !this.isImmobile() && !this.isSwimming() && this.riding == null && !this.hasEffect(Effect.LEVITATION) && !this.hasEffect(Effect.SLOW_FALLING) && this.speed.y != 0) {
                         double expectedVelocity = (-this.getGravity()) / ((double) this.getDrag()) - ((-this.getGravity()) / ((double) this.getDrag())) * FastMath.exp(-((double) this.getDrag()) * ((double) (this.inAirTicks - this.startAirTicks)));
-                        double diff = (this.speed.y - expectedVelocity) * (this.speed.y - expectedVelocity);
+                        // speed.y: positive=down (from-to), expectedVelocity: negative=down (physics)
+                        // Their sum cancels to ~0 during normal falling
+                        double diff = Math.abs(this.speed.y + expectedVelocity);
 
                         if (this.isOnLadder()) {
                             this.resetFallDistance();
                         } else {
-                            if (diff > 2 && expectedVelocity < this.speed.y && this.speed.y != 0) {
+                            if (diff > 1 && expectedVelocity < 0) {
                                 if (this.inAirTicks < 150) {
                                     PlayerInvalidMoveEvent ev = new PlayerInvalidMoveEvent(this, true);
                                     this.getServer().getPluginManager().callEvent(ev);
@@ -3006,7 +3014,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
             this.onGround = false;
         }
 
-        this.forceMovement = this.teleportPosition = this.getPosition();
+        this.forceMovement = this.teleportPosition = this.getLocation();
 
         ResourcePacksInfoPacket infoPacket = new ResourcePacksInfoPacket();
         infoPacket.resourcePackEntries = this.server.getResourcePackManager().getResourceStack(this.gameVersion);
@@ -3341,7 +3349,6 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 }
 
                 try {
-                    // TODO: Why do we read this separately?
                     this.loginChainData = ClientChainData.read(loginPacket);
                 } catch (ClientChainData.TooBigSkinException ex) {
                     this.close("", "disconnectionScreen.invalidSkin");
@@ -3363,13 +3370,16 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
                 this.version = loginChainData.getGameVersion();
 
-                // Apply username prefix for ViaProxy Java Edition clients
+                // Use verified identity data from ClientChainData (signature-validated) as the source of truth
+                String verifiedName = TextFormat.clean(loginChainData.getUsername());
+                if (this.server.spaceMode == 2 && protocol >= ProtocolInfo.v1_16_0) {
+                    verifiedName = verifiedName != null ? verifiedName.replace(" ", "_") : null;
+                }
                 if (this.isJavaClient() && !server.viaProxyUsernamePrefix.isBlank()) {
-                    this.unverifiedUsername = server.viaProxyUsernamePrefix + this.unverifiedUsername;
+                    verifiedName = server.viaProxyUsernamePrefix + verifiedName;
                 }
 
-                // Do not set username before the user is authenticated
-                this.username = this.unverifiedUsername;
+                this.username = verifiedName;
                 this.unverifiedUsername = null;
                 this.displayName = this.username;
                 this.iusername = Optional.ofNullable(this.username).map(s -> s.toLowerCase(Locale.ROOT)).orElse(null);
@@ -3377,22 +3387,23 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
                 this.server.getLogger().debug("Name: " + this.username + " Protocol: " + this.protocol + " Version: " + this.version);
 
-                this.randomClientId = loginPacket.clientId;
+                this.randomClientId = loginChainData.getClientId();
 
-                this.uuid = loginPacket.clientUUID;
+                this.uuid = loginChainData.getClientUUID();
                 this.rawUUID = Binary.writeUUID(this.uuid);
-                this.minecraftId = loginPacket.minecraftId;
+                this.minecraftId = loginChainData.getMinecraftId();
 
                 boolean valid = true;
-                int len = loginPacket.username.length();
+                String rawVerifiedName = loginChainData.getUsername();
+                int len = rawVerifiedName.length();
                 if (((len > 16 || len < 3) && !gameVersion.isNetEase())
-                        || loginPacket.username.trim().isEmpty()) {
+                        || rawVerifiedName.trim().isEmpty()) {
                     valid = false;
                 }
 
                 if (valid && !gameVersion.isNetEase()) {
                     for (int i = 0; i < len; i++) {
-                        char c = loginPacket.username.charAt(i);
+                        char c = rawVerifiedName.charAt(i);
                         if ((c >= 'a' && c <= 'z') ||
                                 (c >= 'A' && c <= 'Z') ||
                                 (c >= '0' && c <= '9') ||
@@ -3510,7 +3521,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
                 if (dis > 100) {
                     if (this.lastTeleportTick + 30 < this.server.getTick()) {
-                        this.sendPosition(this, movePlayerPacket.yaw, movePlayerPacket.pitch, MovePlayerPacket.MODE_RESET);
+                        this.sendPosition(this.getLocation(), MovePlayerPacket.MODE_RESET);
                         log.debug("{}: move {} > 100", username, dis);
                     }
                     break;
@@ -3519,11 +3530,11 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 boolean revert = false;
                 if (!this.isAlive() || !this.spawned) {
                     revert = true;
-                    this.forceMovement = this;
+                    this.forceMovement = this.getLocation();
                 }
 
                 if (this.forceMovement != null && (newPos.distanceSquared(this.forceMovement) > 0.1 || revert)) {
-                    this.sendPosition(this.forceMovement, movePlayerPacket.yaw, movePlayerPacket.pitch, MovePlayerPacket.MODE_RESET);
+                    this.sendPosition(this.forceMovement, MovePlayerPacket.MODE_RESET);
                 } else {
 
                     movePlayerPacket.yaw %= 360;
@@ -3594,6 +3605,10 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 }
 
                 if (this.teleportPosition != null) {
+                    if (this.lastTeleportTick != -1
+                            && authPacket.getInputData().contains(AuthInputAction.HANDLE_TELEPORT)) {
+                        this.lastTeleportTick = -1;
+                    }
                     return;
                 }
 
@@ -3603,6 +3618,11 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                     if (inputY >= -1.001 && inputY <= 1.001) {
                         ((EntityMinecartAbstract) riding).setCurrentSpeed(inputY);
                     }
+                } else if (this.riding instanceof EntityHappyGhast ghast) {
+                    double moveVecX = NukkitMath.clamp(authPacket.getMotion().getX(), -1, 1);
+                    double moveVecY = NukkitMath.clamp(authPacket.getMotion().getY(), -1, 1);
+                    ghast.onPlayerInput(this, moveVecX, moveVecY);
+                    ignoreCoordinateMove = true;
                 } else if (this.riding instanceof EntityBoat boat) {
                     if (this.protocol >= ProtocolInfo.v1_21_130_28) {
                         double moveVecX = authPacket.getMotion().getX();
@@ -3646,8 +3666,8 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                         this.needSendData = true;
                     } else {
                         this.setSprinting(true);
+                        this.setUsingItem(false);
                     }
-                    this.setUsingItem(false);
                 }
 
                 if (authPacket.getInputData().contains(AuthInputAction.STOP_SPRINTING)) {
@@ -3880,7 +3900,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 }
 
                 if (distSqrt > 100) {
-                    this.sendPosition(this, authPacket.getYaw(), authPacket.getPitch(), MovePlayerPacket.MODE_RESET);
+                    this.sendPosition(this.getLocation(), MovePlayerPacket.MODE_RESET);
                     log.debug("{}: move {} > 100", username, distSqrt);
                     return;
                 }
@@ -3888,11 +3908,11 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 boolean revertMotion = false;
                 if (!this.isAlive() || !this.spawned) {
                     revertMotion = true;
-                    this.forceMovement = new Vector3(this.x, this.y, this.z);
+                    this.forceMovement = this.getLocation();
                 }
 
                 if (this.forceMovement != null && (clientPosition.distanceSquared(this.forceMovement) > 0.1 || revertMotion)) {
-                    this.sendPosition(this.forceMovement, authPacket.getYaw(), authPacket.getPitch(), MovePlayerPacket.MODE_RESET);
+                    this.sendPosition(this.forceMovement, MovePlayerPacket.MODE_RESET);
                 } else {
                     float yaw = authPacket.getYaw() % 360;
                     float headYaw = authPacket.getHeadYaw() % 360;
@@ -4002,7 +4022,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                         }
                         break packetswitch;
                     case PlayerActionPacket.ACTION_DIMENSION_CHANGE_SUCCESS:
-                        this.sendPosition(this, this.yaw, this.pitch, MovePlayerPacket.MODE_RESET);
+                        this.sendPosition(this.getLocation(), MovePlayerPacket.MODE_RESET);
                         this.dummyBossBars.values().forEach(DummyBossBar::reshow);
                         break;
                     case PlayerActionPacket.ACTION_START_GLIDE:
@@ -4798,7 +4818,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                                     return;
                                 }
 
-                                this.setDataFlag(DATA_FLAGS, DATA_FLAG_ACTION, false);
+                                this.setUsingItem(false);
 
                                 if (!(this.distance(blockVector.asVector3()) > (this.isCreative() ? 13 : 7))) {
                                     // 创造模式或假旁观模式（未启用客户端旁观）：允许触发事件但不消耗物品
@@ -4915,10 +4935,10 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                                 // 防止右键点击空气的重复触发
                                 // Prevent duplicate triggers of right-click on air
                                 long currentClickAirTime = System.currentTimeMillis();
-                                if (!server.doNotLimitInteractions && (currentClickAirTime - lastRightClickTime) < 100) {
+                                if (!server.doNotLimitInteractions && (currentClickAirTime - lastClickAirTime) < 100) {
                                     return;
                                 }
-                                lastRightClickTime = currentClickAirTime;
+                                lastClickAirTime = currentClickAirTime;
 
                                 Vector3 directionVector = this.getDirectionVector();
 
@@ -6415,7 +6435,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
         this.level.dropItem(this.add(0, 1.3, 0), item, motion, 40);
 
-        this.setDataFlag(DATA_FLAGS, DATA_FLAG_ACTION, false);
+        this.setUsingItem(false);
         return true;
     }
 
@@ -6437,34 +6457,50 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
         Vector3 motion = this.getDirectionVector().multiply(0.4);
 
-        this.setDataFlag(DATA_FLAGS, DATA_FLAG_ACTION, false);
+        this.setUsingItem(false);
 
         return this.level.dropAndGetItem(this.add(0, 1.3, 0), item, motion, 40);
     }
 
     public void sendPosition(Vector3 pos) {
-        this.sendPosition(pos, this.yaw);
+        this.sendPosition(pos, this.yaw, this.pitch, this.headYaw);
     }
 
     public void sendPosition(Vector3 pos, double yaw) {
-        this.sendPosition(pos, yaw, this.pitch);
+        this.sendPosition(pos, yaw, this.pitch, yaw);
     }
 
     public void sendPosition(Vector3 pos, double yaw, double pitch) {
-        this.sendPosition(pos, yaw, pitch, MovePlayerPacket.MODE_NORMAL);
+        this.sendPosition(pos, yaw, pitch, yaw, MovePlayerPacket.MODE_NORMAL);
     }
 
     public void sendPosition(Vector3 pos, double yaw, double pitch, int mode) {
-        this.sendPosition(pos, yaw, pitch, mode, null);
+        this.sendPosition(pos, yaw, pitch, yaw, mode, null);
+    }
+
+    public void sendPosition(Vector3 pos, double yaw, double pitch, double headYaw) {
+        this.sendPosition(pos, yaw, pitch, headYaw, MovePlayerPacket.MODE_NORMAL);
+    }
+
+    public void sendPosition(Vector3 pos, double yaw, double pitch, double headYaw, int mode) {
+        this.sendPosition(pos, yaw, pitch, headYaw, mode, null);
     }
 
     public void sendPosition(Vector3 pos, double yaw, double pitch, int mode, Player[] targets) {
+        this.sendPosition(pos, yaw, pitch, yaw, mode, targets);
+    }
+
+    public void sendPosition(Location pos, int mode) {
+        this.sendPosition(pos, pos.yaw, pos.pitch, pos.headYaw, mode, null);
+    }
+
+    public void sendPosition(Vector3 pos, double yaw, double pitch, double headYaw, int mode, Player[] targets) {
         MovePlayerPacket pk = new MovePlayerPacket();
         pk.eid = this.getId();
         pk.x = (float) pos.x;
         pk.y = (float) (pos.y + this.getBaseOffset());
         pk.z = (float) pos.z;
-        pk.headYaw = (float) yaw;
+        pk.headYaw = (float) headYaw;
         pk.pitch = (float) pitch;
         pk.yaw = (float) yaw;
         pk.mode = mode;
@@ -6487,12 +6523,16 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     }
 
     public void sendPosition(double x, double y, double z, double yaw, double pitch, int mode, Collection<Player> targets) {
+        this.sendPosition(x, y, z, yaw, pitch, yaw, mode, targets);
+    }
+
+    public void sendPosition(double x, double y, double z, double yaw, double pitch, double headYaw, int mode, Collection<Player> targets) {
         MovePlayerPacket pk = new MovePlayerPacket();
         pk.eid = this.getId();
         pk.x = (float) x;
         pk.y = (float) y + this.getBaseOffset();
         pk.z = (float) z;
-        pk.headYaw = (float) yaw;
+        pk.headYaw = (float) headYaw;
         pk.pitch = (float) pitch;
         pk.yaw = (float) yaw;
         pk.mode = mode;
@@ -6561,7 +6601,6 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
             this.spawnToAll();
             this.teleportPosition = null;
-            this.lastTeleportTick = -1;
             return true;
         }
 
@@ -6601,6 +6640,9 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
         // HACK: solve the client-side teleporting bug (inside into the block)
         if (super.teleport(to.getY() == to.getFloorY() ? to.add(0, 0.00001, 0) : to, null)) { // null to prevent fire of duplicate EntityTeleportEvent
+            this.removeAllWindows();
+            this.formOpen = false;
+
             this.lastX = this.x;
             this.lastY = this.y;
             this.lastZ = this.z;
@@ -6610,15 +6652,13 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
             if (from.getLevel() == to.getLevel()) { //TODO 跨世界时客户端不发flag，我们无法正确排除错误移动包
                 this.lastTeleportTick = this.server.getTick();
             }
-            this.teleportPosition = this;
-            if (cause != TeleportCause.ENDER_PEARL) {
-                this.forceMovement = this.teleportPosition;
-            }
+            this.teleportPosition = this.getLocation();
+            this.forceMovement = this.teleportPosition.clone();
 
             if (this.dimensionChangeInProgress) {
                 this.dimensionChangeInProgress = false;
             } else {
-                this.sendPosition(this, this.yaw, this.pitch, MovePlayerPacket.MODE_TELEPORT);
+                this.sendPosition(this.teleportPosition, MovePlayerPacket.MODE_TELEPORT);
                 this.checkTeleportPosition();
                 this.dummyBossBars.values().forEach(DummyBossBar::reshow);
             }
@@ -6657,6 +6697,7 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
         Location from = this.getLocation();
         if (super.teleport(location.add(0, 0.00001, 0), cause)) {
             this.removeAllWindows();
+            this.formOpen = false;
 
             if (from.getLevel().getId() != location.getLevel().getId()) { // Different level, update compass position
                 SetSpawnPositionPacket pk = new SetSpawnPositionPacket();
@@ -6669,8 +6710,8 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 this.dataPacket(pk);
             }
 
-            this.forceMovement = this;
-            this.sendPosition(this, this.yaw, this.pitch, MovePlayerPacket.MODE_RESET);
+            this.forceMovement = this.getLocation();
+            this.sendPosition(this.forceMovement, MovePlayerPacket.MODE_RESET);
 
             this.resetFallDistance();
             this.orderChunks();
@@ -6720,11 +6761,11 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
      * Close form windows sent with showFormWindow
      */
     public void closeFormWindows() {
-        if (this.protocol < ProtocolInfo.v1_21_2) {
-            return;
-        }
+        this.formOpen = false;
         this.formWindows.clear();
-        this.dataPacket(new ClientboundCloseFormPacket());
+        if (this.protocol >= ProtocolInfo.v1_21_2) {
+            this.dataPacket(new ClientboundCloseFormPacket());
+        }
     }
 
     public void showDialogWindow(FormWindowDialog dialog) {
@@ -8011,10 +8052,10 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
 
         UpdateClientInputLocksPacket packet = new UpdateClientInputLocksPacket();
         if (this.lockCameraInput) {
-            packet.lockComponentData |= UpdateClientInputLocksPacket.FLAG_CAMERA;
+            packet.inputLockType.add(UpdateClientInputLocksPacket.InputLockType.CAMERA);
         }
         if (this.lockMovementInput) {
-            packet.lockComponentData |= UpdateClientInputLocksPacket.FLAG_MOVEMENT;
+            packet.inputLockType.add(UpdateClientInputLocksPacket.InputLockType.MOVEMENT);
         }
         packet.setServerPosition(this.getLocation().add(0, this.getBaseOffset(), 0).asVector3f());
 

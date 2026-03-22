@@ -7,7 +7,6 @@ import cn.nukkit.api.NonComputationAtomic;
 import cn.nukkit.block.*;
 import cn.nukkit.blockentity.BlockEntity;
 import cn.nukkit.entity.BaseEntity;
-import cn.nukkit.utils.CollisionHelper;
 import cn.nukkit.entity.Entity;
 import cn.nukkit.entity.custom.EntityDefinition;
 import cn.nukkit.entity.custom.EntityManager;
@@ -286,6 +285,7 @@ public class Level implements ChunkManager, Metadatable {
 
     private final Object2ObjectMap<GameVersion, ConcurrentMap<Long, Int2ObjectMap<Player>>> chunkSendQueues = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectMap<GameVersion, LongSet> chunkSendTasks = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectMap<GameVersion, LongSet> pendingChunkRequests = new Object2ObjectOpenHashMap<>();
 
     private final Cache<Long, Boolean> entityNearbyCacheDirty = Caffeine.newBuilder()
             .maximumSize(512)
@@ -430,12 +430,12 @@ public class Level implements ChunkManager, Metadatable {
         this.levelCurrentTick = levelProvider.getCurrentTick();
         this.updateQueue = new BlockUpdateScheduler(this, levelCurrentTick);
 
-        this.chunkTickRadius = Math.min(this.server.getViewDistance(), Math.max(1, this.server.getPropertyInt("chunk-ticking-radius", 4)));
-        this.chunksPerTicks = this.server.getPropertyInt("chunk-ticking-per-tick", 40);
-        this.chunkGenerationQueueSize = this.server.getPropertyInt("chunk-generation-queue-size", 8);
-        this.chunkPopulationQueueSize = this.server.getPropertyInt("chunk-generation-population-queue-size", 8);
+        this.chunkTickRadius = Math.min(this.server.getViewDistance(), Math.max(1, this.server.getServerConfig().chunkSettings().tickingRadius()));
+        this.chunksPerTicks = this.server.getServerConfig().chunkSettings().tickingPerTick();
+        this.chunkGenerationQueueSize = this.server.getServerConfig().chunkSettings().generationQueueSize();
+        this.chunkPopulationQueueSize = this.server.getServerConfig().chunkSettings().generationPopulationQueueSize();
         this.chunkTickList.clear();
-        this.clearChunksOnTick = this.server.getPropertyBoolean("clear-chunk-tick-list", true);
+        this.clearChunksOnTick = this.server.getServerConfig().chunkSettings().clearChunkTickList();
         this.temporalVector = new Vector3(0, 0, 0);
         this.tickRate = 1;
 
@@ -1093,7 +1093,9 @@ public class Level implements ChunkManager, Metadatable {
 
         this.levelCurrentTick++;
 
-        this.unloadChunks();
+        if (this.levelCurrentTick % 10 == 0) {
+            this.unloadChunks();
+        }
 
         this.updateQueue.tick(this.levelCurrentTick);
 
@@ -1448,6 +1450,9 @@ public class Level implements ChunkManager, Metadatable {
         boolean blockTest = true;
 
         if (!chunkTickList.isEmpty()) {
+            final boolean doRandomTick = this.randomTickingEnabled();
+            final int randomTickSpeed = doRandomTick ? gameRules.getInteger(GameRule.RANDOM_TICK_SPEED) : 0;
+
             ObjectIterator<Long2IntMap.Entry> iter = chunkTickList.long2IntEntrySet().iterator();
             while (iter.hasNext()) {
                 Long2IntMap.Entry entry = iter.next();
@@ -1475,8 +1480,7 @@ public class Level implements ChunkManager, Metadatable {
                     entity.scheduleUpdate();
                 }
 
-                if (this.randomTickingEnabled()) {
-                    final int randomTickSpeed = gameRules.getInteger(GameRule.RANDOM_TICK_SPEED);
+                if (doRandomTick && randomTickSpeed > 0) {
                     if (this.useSections) {
                         for (ChunkSection section : ((Chunk) chunk).getSections()) {
                             if (!(section instanceof EmptyChunkSection)) {
@@ -1487,9 +1491,10 @@ public class Level implements ChunkManager, Metadatable {
                                     int z = n >> 8 & 0xF;
                                     int y = n >> 16 & 0xF;
 
-                                    int blockId = section.getBlockId(x, y, z);
+                                    int fullBlock = section.getFullBlock(x, y, z);
+                                    int blockId = fullBlock >> Block.DATA_BITS;
                                     if (blockId >= 0 && blockId <= Block.MAX_BLOCK_ID && randomTickBlocks[blockId]) {
-                                        Block block = Block.get(blockId, section.getBlockData(x, y, z), this, chunkX * 16 + x, (Y << 4) + y, chunkZ * 16 + z);
+                                        Block block = Block.get(fullBlock, this, chunkX * 16 + x, (Y << 4) + y, chunkZ * 16 + z);
                                         block.onUpdate(BLOCK_UPDATE_RANDOM);
                                     }
                                 }
@@ -3819,6 +3824,7 @@ public class Level implements ChunkManager, Metadatable {
 
         this.getChunkSendQueue(player.getGameVersion()).computeIfAbsent(index, k ->
                 new Int2ObjectOpenHashMap<>()).put(player.getLoaderId(), player);
+        this.getPendingChunkRequests(player.getGameVersion()).add(index);
     }
 
     private void sendChunk(int x, int z, long index, DataPacket packet) {
@@ -3844,17 +3850,21 @@ public class Level implements ChunkManager, Metadatable {
     }
 
     private void processChunkRequest() {
-        // Map shorted by index => requested protocols
         Long2ObjectMap<ObjectSet<GameVersion>> chunkRequests = new Long2ObjectOpenHashMap<>();
-        for (GameVersion protocolId : this.chunkSendQueues.keySet()) {
-            for (long index : this.getChunkSendQueue(protocolId).keySet()) {
-                LongSet tasks = this.getChunkSendTasks(protocolId);
-                if (tasks.contains(index)) {
-                    continue;
-                }
-                chunkRequests.computeIfAbsent(index, l -> new ObjectOpenHashSet<>()).add(protocolId);
-                tasks.add(index);
+        for (GameVersion protocolId : this.pendingChunkRequests.keySet()) {
+            LongSet pending = this.getPendingChunkRequests(protocolId);
+            if (pending.isEmpty()) {
+                continue;
             }
+            LongSet tasks = this.getChunkSendTasks(protocolId);
+            ConcurrentMap<Long, Int2ObjectMap<Player>> queue = this.getChunkSendQueue(protocolId);
+            for (long index : pending) {
+                if (!tasks.contains(index) && queue.containsKey(index)) {
+                    chunkRequests.computeIfAbsent(index, l -> new ObjectOpenHashSet<>()).add(protocolId);
+                    tasks.add(index);
+                }
+            }
+            pending.clear();
         }
 
         this.chunkRequestInternal(chunkRequests);
@@ -4488,18 +4498,6 @@ public class Level implements ChunkManager, Metadatable {
     }
 
     public void addEntityMovement(Entity entity, double x, double y, double z, double yaw, double pitch, double headYaw) {
-        MoveEntityAbsolutePacket pk = new MoveEntityAbsolutePacket();
-        pk.eid = entity.getId();
-        pk.x = x;
-        pk.y = y;
-        pk.z = z;
-        pk.yaw = yaw;
-        pk.headYaw = headYaw;
-        pk.pitch = pitch;
-        pk.onGround = entity.onGround;
-
-        entity.getViewers().values().stream().filter(p -> p.protocol < ProtocolInfo.v1_16_100).forEach(p -> p.dataPacket(pk));
-
         MoveEntityDeltaPacket pk2 = new MoveEntityDeltaPacket();
         pk2.eid = entity.getId();
         if (entity.lastX != x) {
@@ -4530,7 +4528,25 @@ public class Level implements ChunkManager, Metadatable {
             pk2.flags |= MoveEntityDeltaPacket.FLAG_ON_GROUND;
         }
 
-        entity.getViewers().values().stream().filter(p -> p.protocol >= ProtocolInfo.v1_16_100).forEach(p -> p.dataPacket(pk2));
+        MoveEntityAbsolutePacket pk = null; // Lazily created for legacy clients only
+        for (Player p : entity.getViewers().values()) {
+            if (p.protocol < ProtocolInfo.v1_16_100) {
+                if (pk == null) {
+                    pk = new MoveEntityAbsolutePacket();
+                    pk.eid = entity.getId();
+                    pk.x = x;
+                    pk.y = y;
+                    pk.z = z;
+                    pk.yaw = yaw;
+                    pk.headYaw = headYaw;
+                    pk.pitch = pitch;
+                    pk.onGround = entity.onGround;
+                }
+                p.dataPacket(pk);
+            } else {
+                p.dataPacket(pk2);
+            }
+        }
     }
 
     public boolean isRaining() {
@@ -5228,6 +5244,11 @@ public class Level implements ChunkManager, Metadatable {
     private LongSet getChunkSendTasks(GameVersion protocol) {
         GameVersion protocolId = this.getChunkProtocol(protocol);
         return this.chunkSendTasks.computeIfAbsent(protocolId, i -> new LongOpenHashSet());
+    }
+
+    private LongSet getPendingChunkRequests(GameVersion protocol) {
+        GameVersion protocolId = this.getChunkProtocol(protocol);
+        return this.pendingChunkRequests.computeIfAbsent(protocolId, i -> new LongOpenHashSet());
     }
 
     private GameVersion getChunkProtocol(GameVersion version) {
