@@ -71,6 +71,7 @@ public class CraftingManager {
     private static BatchPacket packet844;
     private static BatchPacket packet859;
     private static BatchPacket packet898;
+    private static BatchPacket packet924;
     private static BatchPacket packet944;
 
     private static BatchPacket packet_netease_630;
@@ -288,7 +289,11 @@ public class CraftingManager {
                 }
                 int aux = (int) ingredient.getOrDefault("auxValue", 0);
                 if (aux == 32767) {
-                    aux = -1;
+                    if (legacyEntry.isHasDamage()) {
+                        aux = legacyEntry.getDamage();
+                    } else {
+                        aux = -1;
+                    }
                 } else if (aux == 0) {
                     aux = legacyEntry.getDamage();
                 }
@@ -457,7 +462,11 @@ public class CraftingManager {
                     }
                     int aux = (int) ingredientEntry.getValue().getOrDefault("auxValue", 0);
                     if (aux == 32767) {
-                        aux = -1;
+                        if (legacyEntry.isHasDamage()) {
+                            aux = legacyEntry.getDamage();
+                        } else {
+                            aux = -1;
+                        }
                     } else if (aux == 0) {
                         aux = legacyEntry.getDamage();
                     }
@@ -482,54 +491,55 @@ public class CraftingManager {
 
         Map input = (Map) recipe.get("input");
         Map output = (Map) recipe.get("output");
-        RuntimeItemMapping.LegacyEntry furnaceInputEntry = itemMapping.fromIdentifier((String) input.get("id"));
-        RuntimeItemMapping.LegacyEntry furnaceOutputEntry = itemMapping.fromIdentifier((String) output.get("id"));
 
-        if (furnaceInputEntry != null && furnaceOutputEntry != null && furnaceInputEntry.getLegacyId() != 0 && furnaceOutputEntry.getLegacyId() != 0) {
-            int inputDamage;
-            if (input.containsKey("damage")) {
-                inputDamage = ((Number) input.get("damage")).intValue();
-                if (inputDamage == 32767) {
-                    inputDamage = -1;
-                }
-            } else {
-                inputDamage = furnaceInputEntry.getDamage();
-            }
-            int outputDamage;
-            if (output.containsKey("damage")) {
-                int rawOutputDamage = ((Number) output.get("damage")).intValue();
-                outputDamage = (rawOutputDamage == 32767 || rawOutputDamage == -1) ? furnaceOutputEntry.getDamage() : rawOutputDamage;
-            } else {
-                outputDamage = furnaceOutputEntry.getDamage();
-            }
-            Item inputItem = Item.get(furnaceInputEntry.getLegacyId(), inputDamage, (Integer) input.getOrDefault("count", 1));
-            Item outputItem = Item.get(furnaceOutputEntry.getLegacyId(), outputDamage, (Integer) output.getOrDefault("count", 1));
+        Item inputItem = Item.fromString((String) input.get("id"));
+        Item outputItem = Item.fromString((String) output.get("id"));
 
-            switch (smeltingBlock) {
-                case "furnace": {
-                    FurnaceRecipe furnaceRecipe = new FurnaceRecipe(outputItem, inputItem);
-                    double xp = furnaceXpConfig.getDouble(inputItem.getNamespaceId(ProtocolInfo.CURRENT_PROTOCOL) + ":" + inputItem.getDamage(), 0d);
-                    if (xp != 0) {
-                        this.setRecipeXp(furnaceRecipe, xp);
-                    }
-                    this.registerRecipe(furnaceRecipe);
-                    break;
-                }
-                case "blast_furnace": {
-                    BlastFurnaceRecipe furnaceRecipe = new BlastFurnaceRecipe(outputItem, inputItem);
-                    double xp = furnaceXpConfig.getDouble(inputItem.getNamespaceId(ProtocolInfo.CURRENT_PROTOCOL) + ":" + inputItem.getDamage(), 0d);
-                    if (xp != 0) {
-                        this.setRecipeXp(furnaceRecipe, xp);
-                    }
-                    this.registerRecipe(furnaceRecipe);
-                    break;
-                }
-                case "campfire":
-                    this.registerRecipe(new CampfireRecipe(outputItem, inputItem));
-                    break;
-            }
-        } else {
+        if (inputItem.isNull() || outputItem.isNull()) {
             log.trace("Unknown smelting recipe: {}", recipe);
+            return;
+        }
+
+        if (input.containsKey("damage")) {
+            int inputDamage = ((Number) input.get("damage")).intValue();
+            if (inputDamage == 32767) {
+                inputDamage = -1;
+            }
+            inputItem.setDamage(inputDamage);
+        }
+
+        if (output.containsKey("damage")) {
+            int outputDamage = ((Number) output.get("damage")).intValue();
+            if (outputDamage != 32767 && outputDamage != -1) {
+                outputItem.setDamage(outputDamage);
+            }
+        }
+
+        inputItem.setCount((Integer) input.getOrDefault("count", 1));
+        outputItem.setCount((Integer) output.getOrDefault("count", 1));
+
+        switch (smeltingBlock) {
+            case "furnace": {
+                FurnaceRecipe furnaceRecipe = new FurnaceRecipe(outputItem, inputItem);
+                double xp = furnaceXpConfig.getDouble(inputItem.getNamespaceId() + ":" + inputItem.getDamage(), 0d);
+                if (xp != 0) {
+                    this.setRecipeXp(furnaceRecipe, xp);
+                }
+                this.registerRecipe(furnaceRecipe);
+                break;
+            }
+            case "blast_furnace": {
+                BlastFurnaceRecipe furnaceRecipe = new BlastFurnaceRecipe(outputItem, inputItem);
+                double xp = furnaceXpConfig.getDouble(inputItem.getNamespaceId() + ":" + inputItem.getDamage(), 0d);
+                if (xp != 0) {
+                    this.setRecipeXp(furnaceRecipe, xp);
+                }
+                this.registerRecipe(furnaceRecipe);
+                break;
+            }
+            case "campfire":
+                this.registerRecipe(new CampfireRecipe(outputItem, inputItem));
+                break;
         }
     }
 
@@ -595,7 +605,11 @@ public class CraftingManager {
                     }
                     int aux = (int) ingredient.getOrDefault("auxValue", 0);
                     if (aux == 32767) {
-                        aux = -1;
+                        if (legacyEntry.isHasDamage()) {
+                            aux = legacyEntry.getDamage();
+                        } else {
+                            aux = -1;
+                        }
                     } else if (aux == 0) {
                         aux = legacyEntry.getDamage();
                     }
@@ -681,7 +695,11 @@ public class CraftingManager {
                     }
                     int aux = (int) ingredientEntry.getValue().getOrDefault("auxValue", 0);
                     if (aux == 32767) {
-                        aux = -1;
+                        if (legacyEntry.isHasDamage()) {
+                            aux = legacyEntry.getDamage();
+                        } else {
+                            aux = -1;
+                        }
                     } else if (aux == 0) {
                         aux = legacyEntry.getDamage();
                     }
@@ -803,6 +821,7 @@ public class CraftingManager {
     public void rebuildPacket() {
         //TODO Multiversion 添加新版本支持时修改这里
         packet944 = null;
+        packet924 = null;
         packet898 = null;
         packet859 = null;
         packet844 = null;
@@ -897,6 +916,11 @@ public class CraftingManager {
                 packet944 = packetFor(GameVersion.V1_26_10);
             }
             return packet944;
+        } else if (protocol >= GameVersion.V1_26_0.getProtocol()) {
+            if (packet924 == null) {
+                packet924 = packetFor(GameVersion.V1_26_0);
+            }
+            return packet924;
         } else if (protocol >= GameVersion.V1_21_130_28.getProtocol()) {
             if (packet898 == null) {
                 packet898 = packetFor(GameVersion.V1_21_130);
