@@ -3559,6 +3559,9 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
                 if (!authPacket.getBlockActionData().isEmpty()) {
                     for (PlayerBlockActionData action : authPacket.getBlockActionData().values()) {
                         BlockVector3 blockPos = action.getPosition();
+                        if (blockPos == null) {
+                            continue;
+                        }
                         BlockFace blockFace = BlockFace.fromIndex(action.getFacing());
                         if (this.lastBlockAction != null && this.lastBlockAction.getAction() == PlayerActionType.PREDICT_DESTROY_BLOCK &&
                                 action.getAction() == PlayerActionType.CONTINUE_DESTROY_BLOCK) {
@@ -7822,11 +7825,12 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
         }
 
         return switch (phase) {
-            case RESOURCE_PACK, READY_TO_LOGIN -> packetId == ProtocolInfo.toNewProtocolID(ProtocolInfo.RESOURCE_PACK_CLIENT_RESPONSE_PACKET)
+            case PRE_LOGIN, RESOURCE_PACK, READY_TO_LOGIN -> packetId == ProtocolInfo.toNewProtocolID(ProtocolInfo.CLIENT_CACHE_STATUS_PACKET)
+                    || packetId == ProtocolInfo.toNewProtocolID(ProtocolInfo.RESOURCE_PACK_CLIENT_RESPONSE_PACKET)
                     || packetId == ProtocolInfo.toNewProtocolID(ProtocolInfo.RESOURCE_PACK_CHUNK_REQUEST_PACKET)
                     || packetId == ProtocolInfo.toNewProtocolID(ProtocolInfo.BATCH_PACKET);
             case CONNECTED, NETWORK_SETTINGS_NEGOTIATED, LOGIN_RECEIVED, ENCRYPTION_REQUEST_SENT,
-                    AWAITING_ENCRYPTION_RESPONSE, ENCRYPTION_RESPONSE_RECEIVED, PRE_LOGIN,
+                    AWAITING_ENCRYPTION_RESPONSE, ENCRYPTION_RESPONSE_RECEIVED,
                     LOGGED_IN, DISCONNECTED -> false;
         };
     }
