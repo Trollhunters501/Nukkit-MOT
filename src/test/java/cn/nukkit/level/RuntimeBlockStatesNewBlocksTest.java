@@ -22,7 +22,7 @@ class RuntimeBlockStatesNewBlocksTest {
     private static final Path RESOURCES = Path.of("src/main/resources");
 
     @Test
-    void testRuntimeBlockStatesContainTorchflowerAndPitcherBlocks() throws IOException {
+    void testRuntimeBlockStatesContainNewerVanillaBlocks() throws IOException {
         try (var files = Files.list(RESOURCES)) {
             for (Path file : files.filter(RuntimeBlockStatesNewBlocksTest::isRuntimeBlockStatesFile).toList()) {
                 String fileName = file.getFileName().toString();
@@ -63,6 +63,35 @@ class RuntimeBlockStatesNewBlocksTest {
         if (netease || version >= 589) {
             expected.put("minecraft:pitcher_crop", 16);
             expected.put("minecraft:pitcher_plant", 2);
+        }
+        if (netease || version >= 560) {
+            expected.put("minecraft:bamboo_door", 32);
+        }
+        if (netease || version >= 567) {
+            expected.put("minecraft:chiseled_bookshelf", 256);
+        } else if (version == 560) {
+            expected.put("minecraft:chiseled_bookshelf", 196);
+        }
+        if (netease || version >= 630) {
+            expected.put("minecraft:crafter", 48);
+        }
+        if (!netease && version >= 844) {
+            expected.put("minecraft:copper_lantern", 2);
+            expected.put("minecraft:exposed_copper_lantern", 2);
+            expected.put("minecraft:weathered_copper_lantern", 2);
+            expected.put("minecraft:oxidized_copper_lantern", 2);
+            expected.put("minecraft:waxed_copper_lantern", 2);
+            expected.put("minecraft:waxed_exposed_copper_lantern", 2);
+            expected.put("minecraft:waxed_weathered_copper_lantern", 2);
+            expected.put("minecraft:waxed_oxidized_copper_lantern", 2);
+            expected.put("minecraft:lightning_rod", 12);
+            expected.put("minecraft:exposed_lightning_rod", 12);
+            expected.put("minecraft:weathered_lightning_rod", 12);
+            expected.put("minecraft:oxidized_lightning_rod", 12);
+            expected.put("minecraft:waxed_lightning_rod", 12);
+            expected.put("minecraft:waxed_exposed_lightning_rod", 12);
+            expected.put("minecraft:waxed_weathered_lightning_rod", 12);
+            expected.put("minecraft:waxed_oxidized_lightning_rod", 12);
         }
         return expected;
     }
