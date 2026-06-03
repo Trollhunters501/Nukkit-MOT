@@ -972,7 +972,7 @@ public class Server {
         // Check for updates
         CompletableFuture.runAsync(() -> {
             try {
-                URLConnection request = new URL(Nukkit.BRANCH).openConnection();
+                URLConnection request = URI.create(Nukkit.BRANCH).toURL().openConnection();
                 request.connect();
                 InputStreamReader content = new InputStreamReader((InputStream) request.getContent());
                 String latest = "git-" + JsonParser.parseReader(content).getAsJsonObject().get("sha").getAsString().substring(0, 7);
@@ -1230,6 +1230,7 @@ public class Server {
             this.getLogger().debug("Stopping all tasks...");
             this.scheduler.cancelAllTasks();
             this.scheduler.mainThreadHeartbeat(Integer.MAX_VALUE);
+            this.scheduler.shutdown();
 
             this.getLogger().debug("Closing console...");
             this.consoleThread.interrupt();
